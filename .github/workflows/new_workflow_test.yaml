@@ -11,3 +11,15 @@ jobs:
 
       - name: my-second-step
         run: echo "Hello ,World!"
+
+  runner-job:
+    runs-on: master
+    steps:
+      - name: my-first-step
+        run: echo "Hello World!" >> /home/ec2-user/test.txt
+      
+      - name: my-first-step
+        run: cat /home/ec2-user/test.txt
+
+
+
