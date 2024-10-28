@@ -1,0 +1,73 @@
+name: Deploy to Amazon ECS
+
+on:
+  push:
+    branches:
+      - "ws-prod"
+    paths:
+      - .github/workflows/workflow_deploy_prod.yaml
+      - "result/**"
+      - "vote/**"
+      - "worker/**"
+
+env:
+  AWS_REGION: us-east-1                 
+  ECR_REPOSITORY: ws-apps 
+  ECS_SERVICE_VOTE: ws-vote-service
+  ECS_SERVICE_RESULT: ws-result-service
+  ECS_SERVICE_WORKER: ws-worker-service          
+  ECS_CLUSTER: WSCluster
+  VOTE_TASK_DEFINITION: vote/task-definition.json
+  RESULT_TASK_DEFINITION: result/task-definition.json
+  WORKER_TASK_DEFINITION: worker/task-definition.json
+  VOTE_CONTAINER_NAME: vote-container
+  RESULT_CONTAINER_NAME: result-container
+  WORKER_CONTAINER_NAME: worker-container
+  ENV: "ws-prod"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: Build Image Production
+    runs-on: ubuntu-latest
+    environment: Production
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to Amazon ECR Prod
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        VOTE_IMAGE_TAG: vote-${{ env.ENV }}-latest
+        RESULT_IMAGE_TAG: result-${{ env.ENV }}-latest
+        WORKER_IMAGE_TAG: worker-${{ env.ENV }}-latest
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$VOTE_IMAGE_TAG --build-arg aws_region=${{ env.AWS_REGION }} --build-arg copy_or_mount="copy" -f vote/Dockerfile ./vote
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$VOTE_IMAGE_TAG
+        echo "::set-output name=vote_image::$ECR_REGISTRY/$ECR_REPOSITORY:$VOTE_IMAGE_TAG"
+
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$RESULT_IMAGE_TAG --build-arg aws_region=${{ env.AWS_REGION }} --build-arg in_aws="yes" --build-arg copy_or_mount="copy" -f result/Dockerfile ./result
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$RESULT_IMAGE_TAG
+        echo "::set-output name=result_image::$ECR_REGISTRY/$ECR_REPOSITORY:$RESULT_IMAGE_TAG"
+
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$WORKER_IMAGE_TAG --build-arg aws_region=${{ env.AWS_REGION }} --build-arg copy_or_mount="copy" -f worker/Dockerfile ./worker
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$WORKER_IMAGE_TAG
+        echo "::set-output name=worker_image::$ECR_REGISTRY/$ECR_REPOSITORY:$WORKER_IMAGE_TAG"
+    - name: End Build
+      run: echo "Build Success"
