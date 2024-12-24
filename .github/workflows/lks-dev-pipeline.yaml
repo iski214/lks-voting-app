@@ -1,0 +1,43 @@
+name: deploy app to docker swarm
+
+on:
+  push: 
+    branches:
+      -  dev
+
+jobs: 
+  build:
+    name: lks dev pipeline
+    runs-on: ubuntu-latest
+    steps:
+      -  name: Check Repository
+         uses: actions/checkout@v2
+
+      -  name: Update Docker Version On Runners
+         run: |
+          sudo apt install docker-ce -y
+          docker --version
+
+      -  name: Configure AWS Credentials
+         uses: aws-actions/configure-aws-credentials@v1
+         with: 
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      -  name: Login to ECR
+         run: |
+           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 787712377994.dkr.ecr.us-east-1.amazonaws.com
+           
+      -   name:  build and push image into ECR.
+          env:
+            ECR_REGISTRY: 787712377994.dkr.ecr.us-east-1.amazonaws.com
+            ECR_REPO: lks-voting-image
+            VOTE_IMAGE_TAG: vote-dev-${{github.run_number}}
+            RESULT_IMAGE_TAG: result-dev-${{github.run_number}}
+            WORKER_IMAGE_TAG: worker-dev-${{github.run_number}}
+          run: |
+            docker build -t vote-image ./vote
+            docker tag worker-image $ECR_REGISTRY/$ECR_REPO:$VOTE_IMAGE_TAG
+            docker push $ECR_REGISTRY/$ECR_REPO:$VOTE_IMAGE_TAG
